@@ -3,7 +3,7 @@
  * • Toma el mejor score de cada hoyo a partir de todas las rondas en "Semanas".
  * • Mantiene el valor mínimo que ya exista en ECLEC (nunca lo empeora).
  * • Añade GHIN nuevas, actualiza OUT/IN/TOTAL y colorea los scores.
- * • Cuando una jugadora es nueva, pone los scores más bajos encontrados en cada hoyo.
+ * • Cuando una jugadora es nueva, pone 25 en cada hoyo para comparativa correcta.
  * • Si algún hoyo queda vacío, alerta con el GHIN, nombre y hoyos faltantes.
  */
 function actualizarEclecTRIM() {
@@ -34,6 +34,12 @@ function actualizarEclecTRIM() {
 
   const hS = dS[0], hE = dE[0], hT = dT[0];
 
+  /*─── VALIDAR PAR CAMPO ───*/
+  if (dP.length < 2) {
+    SpreadsheetApp.getUi().alert('⚠️ La hoja PAR CAMPO no tiene datos suficientes.');
+    return;
+  }
+
   /*─── POSICIONES CLAVE ───*/
   const colGHIN_S  = hS.indexOf('GHIN #')  !== -1 ? hS.indexOf('GHIN #')  : hS.indexOf('GHIN#');
   const colGHIN_E  = hE.indexOf('GHIN #')  !== -1 ? hE.indexOf('GHIN #')  : hE.indexOf('GHIN#');
@@ -52,9 +58,23 @@ function actualizarEclecTRIM() {
   }
 
   /*─── PAR POR HOYO ───*/
+  const parHeaders = dP[0];
   const parRow = dP[1] || [];
-  const parIdx = dP[0].reduce((o, v, i) => { o[v] = i; return o; }, {}); // { '1':idx, … }
-  const par = h => Number(parRow[parIdx[h]]);
+  const parIdx = parHeaders.reduce((o, v, i) => { 
+    if (v && v.toString().trim() !== '') {
+      o[v.toString().trim()] = i; 
+    }
+    return o; 
+  }, {}); // { '1':idx, '2':idx, … }
+  
+  // Función para obtener el par de un hoyo
+  const par = h => {
+    const idx = parIdx[h.toString()];
+    if (idx !== undefined && parRow[idx] !== undefined) {
+      return Number(parRow[idx]);
+    }
+    return null; // Si no encuentra el par, retorna null
+  };
 
   /*─── PARTICIPANTES TRIM ───*/
   const partOK={}, infoCat={};
@@ -94,12 +114,10 @@ function actualizarEclecTRIM() {
   /*─── ESCRIBIR/ACTUALIZAR ───*/
   const nCols = hE.length;
   let nuevas = 0, upds = 0;
-  let alertas = [];
 
   Object.keys(best).forEach(g => {
     const scores = best[g];
     let fila, row;
-    let hoyosVacios = [];
 
     if (filaE[g]) { // existe -> leer
       fila = filaE[g];
@@ -108,20 +126,17 @@ function actualizarEclecTRIM() {
     } else { // nueva
       row = Array(nCols).fill('');
       row[colGHIN_E] = g;
-      // Poner los scores más bajos encontrados en cada hoyo
+      // Poner 25 en cada hoyo para jugadoras nuevas
       idxE.forEach((c, i) => {
         if (Number.isFinite(scores[i])) {
           row[c] = scores[i];
         } else {
-          hoyosVacios.push(hList[i]);
+          row[c] = 25; // Valor por defecto para comparativa
         }
       });
       shE.appendRow(row);
       fila = shE.getLastRow();
       nuevas++;
-      if (hoyosVacios.length > 0) {
-        alertas.push(`GHIN ${g} (${names[g] || ''}) sin score en hoyos: ${hoyosVacios.join(', ')}`);
-      }
     }
 
     /*── NOMBRE ─*/
@@ -151,13 +166,6 @@ function actualizarEclecTRIM() {
     /*── VOLCAR FILA ─*/
     shE.getRange(fila, 1, 1, nCols).setValues([row]);
   });
-
-  /*─── ALERTA DE HOYOS VACÍOS ───*/
-  if (alertas.length > 0) {
-    SpreadsheetApp.getUi().alert(
-      '⚠️ Jugadoras nuevas con hoyos sin score:\n\n' + alertas.join('\n')
-    );
-  }
 
   /*─── COLOREO (matriz) ───*/
   const lastRow=shE.getLastRow();
